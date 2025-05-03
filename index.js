@@ -15,25 +15,30 @@ app.get('/scrape', async (req, res) => {
     try {
         const response = await axios.get(url, {
             headers: {
-                'User-Agent': 'Mozilla/5.0'
+                'User-Agent': 'Mozilla/5.0',
+                'Accept-Language': 'es-ES,es;q=0.9'
             }
         });
 
-        const $ = cheerio.load(response.data);
-        const jsonData = $('script[type="application/ld+json"]').html();
+        const html = response.data;
+        const $ = cheerio.load(html);
 
-        if (!jsonData) {
-            return res.status(404).json({ error: 'No se encontró contenido o es privado' });
+        // Intenta obtener JSON en <script> con window._sharedData
+        const scriptTag = $('script').filter((i, el) => $(el).html().includes('window._sharedData')).first().html();
+        
+        if (scriptTag) {
+            const jsonStr = scriptTag.match(/window\._sharedData\s*=\s*(\{.*\});/)[1];
+            const json = JSON.parse(jsonStr);
+
+            const media = json.entry_data?.PostPage?.[0]?.graphql?.shortcode_media;
+            if (media) {
+                const video = media.video_url || null;
+                const thumbnail = media.display_url || null;
+                return res.json({ video, thumbnail });
+            }
         }
 
-        const data = JSON.parse(jsonData);
-        const video = data.contentUrl || null;
-        const thumbnail = data.thumbnailUrl || null;
-
-        return res.json({
-            video,
-            thumbnail
-        });
+        return res.status(404).json({ error: 'No se pudo extraer el video. Puede ser privado o incompatible.' });
 
     } catch (err) {
         console.error(err);
