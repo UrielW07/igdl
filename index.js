@@ -1,6 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
+
 const app = express();
 
 app.use(express.json());
@@ -13,36 +14,33 @@ app.get('/scrape', async (req, res) => {
     }
 
     try {
-        const response = await axios.get(url, {
+        const response = await axios.post('https://snapinsta.app/action.php', new URLSearchParams({
+            url: url,
+            action: 'post'
+        }), {
             headers: {
-                'User-Agent': 'Mozilla/5.0',
-                'Accept-Language': 'es-ES,es;q=0.9'
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': 'Mozilla/5.0'
             }
         });
 
-        const html = response.data;
-        const $ = cheerio.load(html);
+        const $ = cheerio.load(response.data);
 
-        // Intenta obtener JSON en <script> con window._sharedData
-        const scriptTag = $('script').filter((i, el) => $(el).html().includes('window._sharedData')).first().html();
-        
-        if (scriptTag) {
-            const jsonStr = scriptTag.match(/window\._sharedData\s*=\s*(\{.*\});/)[1];
-            const json = JSON.parse(jsonStr);
+        const videoUrl = $('a.downloadBtn').attr('href') || null;
+        const thumbnail = $('img').first().attr('src') || null;
 
-            const media = json.entry_data?.PostPage?.[0]?.graphql?.shortcode_media;
-            if (media) {
-                const video = media.video_url || null;
-                const thumbnail = media.display_url || null;
-                return res.json({ video, thumbnail });
-            }
+        if (!videoUrl) {
+            return res.status(404).json({ error: 'No se pudo obtener el video. Revisa si el link es válido.' });
         }
 
-        return res.status(404).json({ error: 'No se pudo extraer el video. Puede ser privado o incompatible.' });
+        return res.json({
+            video: videoUrl,
+            thumbnail: thumbnail
+        });
 
     } catch (err) {
-        console.error(err);
-        return res.status(500).json({ error: 'Error al scrapear la URL' });
+        console.error(err.message);
+        return res.status(500).json({ error: 'Error al procesar la solicitud.' });
     }
 });
 
